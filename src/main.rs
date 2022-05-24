@@ -1,6 +1,21 @@
+// modules
+pub mod schema;
+mod scheduler;
+mod error;
+mod database;
+#[cfg(test)]
+mod test_util;
+
+#[macro_use]
+extern crate diesel; // this gives us access to compile time validation of our schema.
+#[macro_use]
+extern crate diesel_migrations; // this gives us access to diesels migrations but built into the binary
+
 // stdlib imports
 use std::io;
 use std::time::Duration;
+
+const DURATION_SEC: u64 = 5;
 
 // external crate imports
 use crossterm::{
@@ -23,7 +38,7 @@ fn main() -> Result<(), io::Error> {
         f.render_widget(block, size);
     })?;
 
-    std::thread::sleep(Duration::from_secs(4));
+    std::thread::sleep(Duration::from_secs(DURATION_SEC));
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;

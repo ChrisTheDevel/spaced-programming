@@ -10,3 +10,5 @@ keywords = ["spaced", "tui", "supermemo", "learn"]
 spaced-rs = "0.1.0"
 tui = "0.18"
 crossterm = "0.23"
+diesel = { version = "1.4.8", features = ["sqlite"] }
+diesel_migrations = "1.4.0"
