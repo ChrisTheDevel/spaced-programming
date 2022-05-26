@@ -315,9 +315,9 @@ dependencies = [
 
 [[package]]
 name = "spaced-rs"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2598b669d591fb942f4ceb0dfac65b7f986bf54d7a87fa7c444eb93869fd3f2"
+checksum = "e3b2af83ea490aafc356abab5c32597f19f81bfc6535021b2c18521dfbb57f41"
 dependencies = [
  "rand",
 ]
