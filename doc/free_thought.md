@@ -2,6 +2,13 @@
 
 This document contains ideas and thoughts about this project. I may or may not contain anything reflecting the code-state/functionality of the application as it currently is. It serves mainly as a way for me to structure my thoughts by being forced to put them down in ASCII.
 
+# 25 may 2022
+
+What should my schema for each item be like?
+- I need to include all data required by my spaced-rs library
+- I need to include enough information to quickly retrieve the items that I am suposed to review today.
+- I need to save the notes related to each card. (text field containing markdown)
+
 # 22 May 2022
 
 I want a way to combine the practice of solving CP problems on sites such as leetcode/kattis/oa with the practice of spaced repetition.
