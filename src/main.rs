@@ -1,10 +1,8 @@
 // modules
 pub mod schema;
 mod scheduler;
-mod error;
 mod database;
-#[cfg(test)]
-mod test_util;
+mod types;
 
 #[macro_use]
 extern crate diesel; // this gives us access to compile time validation of our schema.
