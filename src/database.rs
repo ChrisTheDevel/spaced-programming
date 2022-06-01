@@ -1,8 +1,12 @@
 // external crate imports
 use diesel::prelude::*;
 use diesel::result::QueryResult;
+embed_migrations!(); //Inject a module embeded migrations which has all the migrations we want.
+use diesel::expression::dsl::now;
 // internal crate imports
 use crate::types::*;
+// stdlib imports
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// database wrapper
 pub struct Database {
@@ -19,15 +23,9 @@ impl Database {
         items.find(id).first(&self.connection)
     }
 
-    pub fn add_item(&self, item: Item) -> QueryResult<()> {
-        use crate::schema::items;
-        let _n_rows_affected = diesel::insert_into(items::table)
-            .values(&item)
-            .execute(&self.connection)?;
-        Ok(())
-    }
-
-    pub fn get_due(&self) -> Vec<ReviewItem> {
-        todo!()
+    pub fn get_due(&mut self) -> QueryResult<Vec<ReviewItem>> {
+        use crate::schema::schedule::dsl::*;
+        let unix_time_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        schedule.filter(due.le(unix_time_now)).load(&mut self.connection)
     }
 }

@@ -1,8 +1,7 @@
 //! types representing items
 use crate::schema::*;
 
-#[derive(Queryable, Insertable)]
-#[table_name = "items"]
+#[derive(Queryable)]
 /// Items from the items table
 pub struct Item {
     pub id: i32,
@@ -17,8 +16,7 @@ pub struct Item {
 }
 
 /// Items from the schedule table
-#[derive(Queryable, Insertable)]
-#[table_name = "schedule"]
+#[derive(Queryable)]
 pub struct ReviewItem {
     pub id: i32,
     pub due: i32,
@@ -26,8 +24,7 @@ pub struct ReviewItem {
 }
 
 /// New items from the inbox table
-#[derive(Queryable, Insertable)]
-#[table_name = "inbox"]
+#[derive(Queryable)]
 pub struct NewItem {
     pub id: i32,
     pub url: String,

@@ -1,6 +1,6 @@
 -- Your SQL goes here
 CREATE TABLE items ( -- table containing all item specific data
-	id INT PRIMARY KEY NOT NULL, -- unix timestamp when
+	id INT PRIMARY KEY NOT NULL,
 	intervall INT NOT NULL, -- spaced-rs requires below data, Intervall in days
 	difficulty FLOAT NOT NULL,
 	memory_strength FLOAT NOT NULL,
