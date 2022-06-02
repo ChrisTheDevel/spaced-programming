@@ -14,7 +14,7 @@ pub struct Database {
 impl Database {
     /// Returns an instance of a Database. Also creates it and sets up schema if it did not exist.
     /// Expects full path to db (including db file name)
-    pub fn init(db_path: &Path) -> AppResult<Database> {
+    pub fn init(db_path: &Path) -> DatabaseResult<Database> {
         // check if the db exist, if it does not, create path for it
         if !db_path.exists() {
             std::fs::create_dir_all(db_path)?;
@@ -31,11 +31,7 @@ impl Database {
         } else if version != SCHEMA_VERSION {
             // if the schema version is non-zero but different from our SCHEMA_VERSION constant, throw
             // an error. We might handle migration later
-            return Err(AppError::DatabaseError(
-                DatabaseErrorSource::InvalidSchemaVersion(format!(
-                    "Schema version was incorrect. Should be {SCHEMA_VERSION}"
-                )),
-            ));
+            return Err(DatabaseErrorSource::InvalidSchemaError("The Schema was not valid! A migration might have failed or the db was not properly initalized!".into()));
         }
         // if we've gotten this far then it is ok to take the connectiona and return it.
         Ok(Self { connection: conn })
