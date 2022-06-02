@@ -17,7 +17,13 @@ use crossterm::{
 use tui::widgets::{Block, Borders};
 use tui::{backend::CrosstermBackend, Terminal};
 
-fn main() -> Result<(), io::Error> {
+// internal crate imports
+use crate::error::*;
+
+fn main() -> Result<(), AppError> {
+
+
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;

@@ -14,31 +14,31 @@ pub struct Database {
 impl Database {
     /// Returns an instance of a Database. Also creates it and sets up schema if it did not exist.
     /// Expects full path to db (including db file name)
-    pub fn init(db_path: &Path) -> BackendResult<Database> {
+    pub fn init(db_path: &Path) -> AppResult<Database> {
         // check if the db exist, if it does not, create path for it
         if !db_path.exists() {
             std::fs::create_dir_all(db_path)?;
         }
         // open database connection
-        let connection = Connection::open(db_path)?;
+        let conn = Connection::open(db_path)?;
 
         // query for pragma version
-        let version = { 
-
-        };
+        let version = queries::schema_version(&conn)?;
 
         if version == 0 {
             // if the schema version is zero then the database is new and we need to init its schema
-            init_schema(&connection)?;
+            init_schema(&conn)?;
         } else if version != SCHEMA_VERSION {
             // if the schema version is non-zero but different from our SCHEMA_VERSION constant, throw
             // an error. We might handle migration later
-            return Err(BackendError::DatabaseInitError(DatabaseInitErrorSource::InvalidSchemaVersion("The schema version was not correct! The setup/migration might have only completed partially")));
-        }     
+            return Err(AppError::DatabaseError(
+                DatabaseErrorSource::InvalidSchemaVersion(format!(
+                    "Schema version was incorrect. Should be {SCHEMA_VERSION}"
+                )),
+            ));
+        }
         // if we've gotten this far then it is ok to take the connectiona and return it.
-        Ok(Self {
-            connection,
-        })
+        Ok(Self { connection: conn })
     }
 }
 
@@ -46,7 +46,7 @@ mod queries {
     use super::*;
     use rusqlite::{Result as RusqliteResult, Row};
 
-    pub fn init_schema(conn: &Connection) ->  RusqliteResult<()> {
+    pub fn init_schema(conn: &Connection) -> RusqliteResult<()> {
         // create items table (containing item specific data)
         // create schedule table (used to assign due dates and query items that are due)
         // create inbox table (used to store urls+tags for future items)
@@ -57,8 +57,7 @@ mod queries {
     }
 
     fn create_items(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string = 
-            "CREATE TABLE items (\
+        let sql_string = "CREATE TABLE items (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 intervall INTEGER NOT NULL,\
                 difficulty REAL NOT NULL,\
@@ -74,8 +73,7 @@ mod queries {
     }
 
     fn create_schedule(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string = 
-            "CREATE TABLE schedule (\
+        let sql_string = "CREATE TABLE schedule (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 due INTEGER NOT NULL, -- due date stored in unix time\
                 item_id INTEGER NOT NULL UNIQUE,\
@@ -86,8 +84,7 @@ mod queries {
     }
 
     fn create_inbox(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string =
-            "CREATE TABLE inbox (\
+        let sql_string = "CREATE TABLE inbox (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 url TEXT NOT NULL\
             )";
@@ -96,9 +93,11 @@ mod queries {
     }
 
     pub fn schema_version(conn: &Connection) -> RusqliteResult<i32> {
-        Ok(conn.pragma_query_value(None, "schema_version", |row: &Row| {
-           let schema_version: i32 = row.get(0)?;
-           Ok(schema_version)
-        })?)
+        let query = "SELECT schema_version FROM pragma_schema_version";
+        let mut stmt = conn.prepare(query)?;
+        stmt.query_row([], |row: &Row<'_>| {
+            let schema_version: i32 = row.get(0)?;
+            Ok(schema_version)
+        })
     }
 }
