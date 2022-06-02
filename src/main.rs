@@ -1,6 +1,7 @@
 // modules
 mod scheduler;
 mod database;
+mod error;
 
 // stdlib imports
 use std::io;

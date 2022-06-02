@@ -300,7 +300,17 @@ dependencies = [
  "crossterm",
  "rand",
  "rusqlite",
+ "spaced-rs",
  "tui",
+]
+
+[[package]]
+name = "spaced-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b2af83ea490aafc356abab5c32597f19f81bfc6535021b2c18521dfbb57f41"
+dependencies = [
+ "rand",
 ]
 
 [[package]]
