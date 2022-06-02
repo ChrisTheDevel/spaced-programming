@@ -2,8 +2,6 @@ use crate::error::*;
 use rusqlite::Connection;
 use std::path::Path;
 
-use queries::init_schema;
-
 /// The number of schema altering commands That has been run on the db.
 const SCHEMA_VERSION: i32 = 3;
 
@@ -23,11 +21,11 @@ impl Database {
         let conn = Connection::open(db_path)?;
 
         // query for pragma version
-        let version = queries::schema_version(&conn)?;
+        let version = qrs_and_stmts::schema_version(&conn)?;
 
         if version == 0 {
             // if the schema version is zero then the database is new and we need to init its schema
-            init_schema(&conn)?;
+            qrs_and_stmts::init_schema(&conn)?;
         } else if version != SCHEMA_VERSION {
             // if the schema version is non-zero but different from our SCHEMA_VERSION constant, throw
             // an error. We might handle migration later
@@ -38,7 +36,9 @@ impl Database {
     }
 }
 
-mod queries {
+/// module containing all queries and statements abstracted as functions. All sql code should be
+/// contained in this module
+mod qrs_and_stmts {
     use super::*;
     use rusqlite::{Result as RusqliteResult, Row};
 
@@ -71,7 +71,7 @@ mod queries {
     fn create_schedule(conn: &Connection) -> RusqliteResult<()> {
         let sql_string = "CREATE TABLE schedule (\
                 id INTEGER PRIMARY KEY NOT NULL,\
-                due INTEGER NOT NULL, -- due date stored in unix time\
+                due INTEGER NOT NULL,\
                 item_id INTEGER NOT NULL UNIQUE,\
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE\
             )";

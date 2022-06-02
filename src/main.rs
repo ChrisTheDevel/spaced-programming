@@ -2,6 +2,7 @@
 mod scheduler;
 mod database;
 mod error;
+mod types;
 
 // stdlib imports
 use std::io;

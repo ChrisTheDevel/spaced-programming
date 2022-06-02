@@ -1,6 +1,9 @@
 # Free thoughts
 
 This document contains ideas and thoughts about this project. I may or may not contain anything reflecting the code-state/functionality of the application as it currently is. It serves mainly as a way for me to structure my thoughts by being forced to put them down in ASCII.
+# 02 may 2022
+
+
 
 # 25 may 2022
 
