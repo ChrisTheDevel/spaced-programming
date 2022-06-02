@@ -2,7 +2,7 @@ use crate::error::*;
 use rusqlite::Connection;
 use std::path::Path;
 
-use queries::{init_schema}
+use queries::init_schema;
 
 /// The number of schema altering commands That has been run on the db.
 const SCHEMA_VERSION: i32 = 3;
@@ -23,22 +23,28 @@ impl Database {
         let connection = Connection::open(db_path)?;
 
         // query for pragma version
-        let version = { todo!() };
+        let version = { 
+
+        };
 
         if version == 0 {
             // if the schema version is zero then the database is new and we need to init its schema
-            init_schema(&connection)
+            init_schema(&connection)?;
         } else if version != SCHEMA_VERSION {
             // if the schema version is non-zero but different from our SCHEMA_VERSION constant, throw
             // an error. We might handle migration later
             return Err(BackendError::DatabaseInitError(DatabaseInitErrorSource::InvalidSchemaVersion("The schema version was not correct! The setup/migration might have only completed partially")));
-        }
+        }     
+        // if we've gotten this far then it is ok to take the connectiona and return it.
+        Ok(Self {
+            connection,
+        })
     }
 }
 
 mod queries {
     use super::*;
-    use rusqlite::Result as RusqliteResult;
+    use rusqlite::{Result as RusqliteResult, Row};
 
     pub fn init_schema(conn: &Connection) ->  RusqliteResult<()> {
         // create items table (containing item specific data)
@@ -68,15 +74,31 @@ mod queries {
     }
 
     fn create_schedule(conn: &Connection) -> RusqliteResult<()> {
-        Ok(())
-    }
-
-    fn create_due_index(conn: &Connection) -> RusqliteResult<()> {
+        let sql_string = 
+            "CREATE TABLE schedule (\
+                id INTEGER PRIMARY KEY NOT NULL,\
+                due INTEGER NOT NULL, -- due date stored in unix time\
+                item_id INTEGER NOT NULL UNIQUE,\
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE\
+            )";
+        conn.execute(sql_string, [])?;
         Ok(())
     }
 
     fn create_inbox(conn: &Connection) -> RusqliteResult<()> {
+        let sql_string =
+            "CREATE TABLE inbox (\
+                id INTEGER PRIMARY KEY NOT NULL,\
+                url TEXT NOT NULL\
+            )";
+        conn.execute(sql_string, [])?;
         Ok(())
     }
 
+    pub fn schema_version(conn: &Connection) -> RusqliteResult<i32> {
+        Ok(conn.pragma_query_value(None, "schema_version", |row: &Row| {
+           let schema_version: i32 = row.get(0)?;
+           Ok(schema_version)
+        })?)
+    }
 }
