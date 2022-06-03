@@ -1,9 +1,16 @@
 # Free thoughts
 
 This document contains ideas and thoughts about this project. I may or may not contain anything reflecting the code-state/functionality of the application as it currently is. It serves mainly as a way for me to structure my thoughts by being forced to put them down in ASCII.
-# 02 may 2022
+# 02 June 2022
+Wrote quite a good error abstraction module that I believe should scale well. I still have to implement the functions that queries the db.
 
+The focus right now is finishing the draft to those functions and then start testing everything.
 
+How should i handle concurrent tests when my db does not support concurrent access? How can I create and delete the temporary directories concurrently?
+- Every database test gets it's own database instance to use. 
+- the function that tries to create the directory should have some retry logic such that it may fail but then try agains after a short duration. This mean I can still utilize the concurrent test framework provided by cargo.
+
+I also streamed todays work in twitch. That was a lot of fun! I will probably create a youtube channel where I'll upload as well.
 
 # 25 may 2022
 
