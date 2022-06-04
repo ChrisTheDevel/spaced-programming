@@ -39,17 +39,13 @@ impl Database {
     fn schema_version(&self) -> DatabaseResult<usize> {
         Ok(queries_and_stmts::schema_version(&self.connection)?)
     }
-
-    fn schema(&self) -> DatabaseResult<[String; SCHEMA_VERSION]> {
-        Ok(queries_and_stmts::schema(&self.connection)?)
-    }
 }
 
 /// module containing all queries and statements abstracted as functions. All sql code should be
 /// contained in this module
 mod queries_and_stmts {
     use super::*;
-    use rusqlite::{Result as RusqliteResult, Row};
+    use rusqlite::{MappedRows, Result as RusqliteResult, Row, Statement};
 
     pub fn init_schema(conn: &Connection) -> RusqliteResult<()> {
         // create items table (containing item specific data)
@@ -104,15 +100,6 @@ mod queries_and_stmts {
             let schema_version: usize = row.get(0)?;
             Ok(schema_version)
         })
-    }
-
-    // TODO implement this! Should query with SELECT sql from sqlite_schema where type='table';
-    pub fn schema(conn: &Connection) -> RusqliteResult<[String; SCHEMA_VERSION]> {
-        Ok([
-           "hello".into(),
-           "is".into(),
-           "it".into(),
-        ])
     }
 }
 
@@ -176,7 +163,7 @@ mod tests {
     fn create_db_test_schema_version() {
         let (db_path, cleanup) = create_temp_dir("create_db_test_schema_version");
 
-        // create the db. 
+        // create the db.
         let first_result = Database::init(&db_path);
         assert!(first_result.is_ok());
         let first = first_result.unwrap();
@@ -188,26 +175,4 @@ mod tests {
         assert!(version == SCHEMA_VERSION);
         assert!(cleanup().is_ok());
     }
-
-    #[test]
-    fn create_db_test_schema(){
-        let (db_path, cleanup) = create_temp_dir("create_db_test_schema");
-
-        // create the db. 
-        let first_result = Database::init(&db_path);
-        assert!(first_result.is_ok());
-        let first = first_result.unwrap();
-
-        // query its schema version and validate it
-        let schema_result = first.schema();
-        assert!(schema_result.is_ok());
-        let schema = schema_result.unwrap();
-        let expected_schema = [
-            "CREATE TABLE items (id INTEGER PRIMARY KEY NOT NULL,intervall INTEGER NOT NULL,difficulty REAL NOT NULL,memory_strength REAL NOT NULL,adjusting_factor REAL NOT NULL,times_reviewed INTEGER NOT NULL,times_recalled INTEGER NOT NULL,url TEXT NOT NULL UNIQUE,item_data TEXT NOT NULL)",
-            "CREATE TABLE schedule (id INTEGER PRIMARY KEY NOT NULL,due INTEGER NOT NULL,item_id INTEGER NOT NULL UNIQUE,FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE)",
-            "CREATE TABLE inbox (id INTEGER PRIMARY KEY NOT NULL,url TEXT NOT NULL)",
-        ];
-        assert!(schema == expected_schema);
-    }
-
 }
