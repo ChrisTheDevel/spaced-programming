@@ -17,23 +17,7 @@ impl Database {
         if !db_path.exists() {
             // it seems like I don't need to handle errors that arise when creating dirs in
             // parallell
-            //#[cfg(not(test))] 
             std::fs::create_dir_all(db_path.parent().unwrap())?;
-            // #[cfg(test)] 
-            // {
-            //     let mut counter = 5;
-            //     loop {
-            //         // we only want to create the path up until but not including the db name
-            //         match std::fs::create_dir_all(db_path.parent().unwrap()) {
-            //             Ok(_) => break, // the dir creation was successfull,
-            //             Err(_) => counter -= 1,
-            //         }
-            //         std::thread::sleep(Duration::from_millis(20));
-            //         if counter == 0 {
-            //             break;
-            //         }
-            //     }
-            // }
         }
         // open database connection
         let conn = Connection::open(db_path)?;
