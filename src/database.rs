@@ -1,65 +1,61 @@
-use crate::error::*;
-use rusqlite::Connection;
-use std::{path::Path, time::Duration};
+//! This module contains all interactions with the database. I here expose sql calls through functions and nothing else.
 
-/// The number of schema altering commands That has been run on the db.
+// stdlib imports
+use std::path::Path;
+// external imports
+use rusqlite::{Connection, Row};
+// internal imports
+use crate::error::{DatabaseErrorSource, DatabaseResult};
+
 const SCHEMA_VERSION: usize = 3;
 
-pub struct Database {
-    connection: Connection,
+/// creates a connection to the database at location {path} and creates the paths leading up to it if id didn't exist
+pub fn open_connection(path: &Path) -> DatabaseResult<Connection> {
+    // check if the db already exists
+    let conn;
+    if path.exists() {
+        // if it exists that means we have initialized it before, therefore the schema should be valid.
+        // we now need to validate it's schema... before we can return the connnection
+        conn = Connection::open(path)?;
+        let sv = schema_version(&conn)?;
+        if sv != SCHEMA_VERSION {
+            // if the schema was invalid we simply err, might have some migration logic in the future
+            return Err(DatabaseErrorSource::InvalidSchemaError(sv));
+        }
+    } else {
+        let parent = path
+            .parent()
+            .expect("could not retrieve parent! The provided path cannot be a valid location");
+        std::fs::create_dir_all(parent)?;
+        conn = Connection::open(path)?;
+        init_schema(&conn)?;
+    }
+    Ok(conn)
 }
 
-impl Database {
-    /// Returns an instance of a Database. Also creates it and sets up schema if it did not exist.
-    /// Expects full path to db (including db file name)
-    pub fn init(db_path: &Path) -> DatabaseResult<Database> {
-        // check if the db exist, if it does not, create path for it
-        if !db_path.exists() {
-            // it seems like I don't need to handle errors that arise when creating dirs in
-            // parallell
-            std::fs::create_dir_all(db_path.parent().unwrap())?;
-        }
-        // open database connection
-        let conn = Connection::open(db_path)?;
+pub fn schema_version(conn: &Connection) -> DatabaseResult<usize> {
+    let query = "SELECT schema_version FROM pragma_schema_version";
 
-        // query for pragma version
-        let version = queries_and_stmts::schema_version(&conn)?;
-
-        if version == 0 {
-            // if the schema version is zero then the database is new and we need to init its schema
-            queries_and_stmts::init_schema(&conn)?;
-        } else if version != SCHEMA_VERSION {
-            // if the schema version is non-zero but different from our SCHEMA_VERSION constant, throw
-            // an error. We might handle migration later
-            return Err(DatabaseErrorSource::InvalidSchemaError("The Schema was not valid! A migration might have failed or the db was not properly initalized!".into()));
-        }
-        // if we've gotten this far then it is ok to take the connectiona and return it.
-        Ok(Self { connection: conn })
-    }
-
-    fn schema_version(&self) -> DatabaseResult<usize> {
-        Ok(queries_and_stmts::schema_version(&self.connection)?)
-    }
+    let mut stmt = conn.prepare(query)?;
+    Ok(stmt.query_row([], |row: &Row<'_>| {
+        let schema_version: usize = row.get(0)?;
+        Ok(schema_version)
+    })?)
 }
 
-/// module containing all queries and statements abstracted as functions. All sql code should be
-/// contained in this module
-mod queries_and_stmts {
-    use super::*;
-    use rusqlite::{MappedRows, Result as RusqliteResult, Row, Statement};
+pub fn init_schema(conn: &Connection) -> DatabaseResult<()> {
+    // create items table (containing item specific data)
+    // create schedule table (used to assign due dates and query items that are due)
+    // create inbox table (used to store urls+tags for future items)
+    create_items(&conn)?;
+    create_schedule(&conn)?;
+    create_inbox(&conn)?;
+    Ok(())
+}
 
-    pub fn init_schema(conn: &Connection) -> RusqliteResult<()> {
-        // create items table (containing item specific data)
-        // create schedule table (used to assign due dates and query items that are due)
-        // create inbox table (used to store urls+tags for future items)
-        create_items(&conn)?;
-        create_schedule(&conn)?;
-        create_inbox(&conn)?;
-        Ok(())
-    }
-
-    fn create_items(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string = "CREATE TABLE items (\
+fn create_items(conn: &Connection) -> DatabaseResult<()> {
+    // the item table
+    let sql_string = "CREATE TABLE items (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 intervall INTEGER NOT NULL,\
                 difficulty REAL NOT NULL,\
@@ -68,112 +64,70 @@ mod queries_and_stmts {
                 times_reviewed INTEGER NOT NULL,\
                 times_recalled INTEGER NOT NULL,\
                 url TEXT NOT NULL UNIQUE,\
-                item_data TEXT NOT NULL\
+                tags TEXT NOT NULL,\
+                item_notes TEXT NOT NULL\
             )";
-        conn.execute(sql_string, [])?;
-        Ok(())
-    }
+    conn.execute(sql_string, [])?;
+    Ok(())
+}
 
-    fn create_schedule(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string = "CREATE TABLE schedule (\
+fn create_schedule(conn: &Connection) -> DatabaseResult<()> {
+    let sql_string = "CREATE TABLE schedule (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 due INTEGER NOT NULL,\
                 item_id INTEGER NOT NULL UNIQUE,\
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE\
             )";
-        conn.execute(sql_string, [])?;
-        Ok(())
-    }
+    conn.execute(sql_string, [])?;
+    Ok(())
+}
 
-    fn create_inbox(conn: &Connection) -> RusqliteResult<()> {
-        let sql_string = "CREATE TABLE inbox (\
+fn create_inbox(conn: &Connection) -> DatabaseResult<()> {
+    let sql_string = "CREATE TABLE inbox (\
                 id INTEGER PRIMARY KEY NOT NULL,\
                 url TEXT NOT NULL\
             )";
-        conn.execute(sql_string, [])?;
-        Ok(())
-    }
-
-    pub fn schema_version(conn: &Connection) -> RusqliteResult<usize> {
-        let query = "SELECT schema_version FROM pragma_schema_version";
-        let mut stmt = conn.prepare(query)?;
-        stmt.query_row([], |row: &Row<'_>| {
-            let schema_version: usize = row.get(0)?;
-            Ok(schema_version)
-        })
-    }
+    conn.execute(sql_string, [])?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
+    use serial_test::serial;
+    use std::path::PathBuf;
 
     /// util function to create temp path for db_instance. Returns path and cleanup function.
     fn create_temp_dir(db_name: &str) -> (PathBuf, Box<dyn FnOnce() -> std::io::Result<()>>) {
         let temp_dir = std::env::temp_dir().join(format!("{db_name}_dir"));
         let full_path = temp_dir.clone().join(format!("{db_name}.db"));
-
-        // since the init function in Database already takes care of creating dirs if nonexistent,
-        // we do not create them here
-        //std::fs::create_dir_all(&temp_dir).unwrap();
-
-        // TODO why do I not need to use move in the closure below? Clearly it outlives temp_dir
-        // Probably because the compiler simply infers it?
-        let clean_up = Box::new(|| std::fs::remove_dir_all(temp_dir));
+        // cleanup callback
+        let clean_up = Box::new(move || std::fs::remove_dir_all(temp_dir));
         (full_path, clean_up)
     }
 
     #[test]
+    #[serial] // annotation that will make sure that this is run sequentially
     fn create_db_once() {
         let (db_path, cleanup) = create_temp_dir("create_db_once");
-        let db_result = Database::init(&db_path);
-
-        //we should always be able to create a new database and initialize its schema
-        assert!(db_result.is_ok());
+        let conn = open_connection(&db_path);
+        assert!(conn.is_ok());
         assert!(cleanup().is_ok());
     }
 
-    // TODO the rusqlite library apparently supports concurrent access! What is it then that it
-    // cannot do concurrently?
-    // #[test]
-    // fn create_two_db_simul() {
-    //     let (db_path, cleanup) = create_temp_dir("create_two_db_simul");
-    //
-    //     let first_db = Database::init(&db_path);
-    //     assert!(first_db.is_ok());  // the first instantiation of the db should succeed
-    //     let second_db = Database::init(&db_path);
-    //     assert!(first_db.is_err()); // the second one should fail!
-    // }
-
     #[test]
-    fn create_two_db_seq() {
-        let (db_path, cleanup) = create_temp_dir("create_two_db_seq");
+    #[serial]
+    fn create_db_twice() {
+        let (db_path, cleanup) = create_temp_dir("create_db_once");
         {
-            let first = Database::init(&db_path);
-            assert!(first.is_ok());
+            let conn = open_connection(&db_path);
+            assert!(conn.is_ok());
         }
 
-        let second = Database::init(&db_path);
-        assert!(second.is_ok());
-        assert!(cleanup().is_ok());
-    }
+        let conn = open_connection(&db_path);
+        assert!(conn.is_ok());
+        // since we successfully created the db the second time we can also be sure that we do infact do a SCHEMA_VERSION number of schema altering changes
 
-    #[test]
-    fn create_db_test_schema_version() {
-        let (db_path, cleanup) = create_temp_dir("create_db_test_schema_version");
-
-        // create the db.
-        let first_result = Database::init(&db_path);
-        assert!(first_result.is_ok());
-        let first = first_result.unwrap();
-
-        // query its schema version and validate it
-        let version_result = first.schema_version();
-        assert!(version_result.is_ok());
-        let version = version_result.unwrap();
-        assert!(version == SCHEMA_VERSION);
         assert!(cleanup().is_ok());
     }
 }
