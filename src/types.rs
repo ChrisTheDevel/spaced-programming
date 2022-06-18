@@ -1,20 +1,32 @@
+pub use spaced_rs::SchedulingData;
 pub type SchemaVersion = usize;
+pub type ItemId = u64;
 
-/// Item type
+// id field omittet
 pub struct Item {
-    // Unix time in milliseconds
-    id: u128,
+    // the first time we insert the item into the item table we want it to provide us with a id
+    id: Option<ItemId>,
 
     // scheduling data
-    intervall: i32,
-    difficulty: f32,
-    memory_strength: f32,
-    adjusting_factor: f32,
-    times_reviewed: i32,
-    times_recalled: i32,
+    scheduling_data: SchedulingData,
 
     // url to problem
     url: String,
     tags: Vec<String>,
     item_notes: String,
+}
+
+pub struct ScheduleItem {
+    pub id: u64,
+    // unix timestamp
+    pub due: u64,
+    // references the id of the Item
+    pub item_id: ItemId,
+}
+
+// new item. When representing an item that we're going to insert into inbox,
+// the id field is none (we want sqlite to give us a id)
+pub struct NewItem {
+    pub id: Option<u64>,
+    pub url: String,
 }

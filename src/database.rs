@@ -5,7 +5,10 @@ use std::path::Path;
 // external imports
 use rusqlite::{Connection, Row};
 // internal imports
-use crate::error::{DatabaseErrorSource, DatabaseResult};
+use crate::{
+    error::{DatabaseErrorSource, DatabaseResult},
+    types::{Item, ItemId, NewItem},
+};
 
 const SCHEMA_VERSION: usize = 3;
 
@@ -55,8 +58,9 @@ pub fn init_schema(conn: &Connection) -> DatabaseResult<()> {
 
 fn create_items(conn: &Connection) -> DatabaseResult<()> {
     // the item table
+    // the id column is an alias for the rowid
     let sql_string = "CREATE TABLE items (\
-                id INTEGER PRIMARY KEY NOT NULL,\
+                id INTEGER PRIMARY KEY AUTOINCREMENT,\
                 intervall INTEGER NOT NULL,\
                 difficulty REAL NOT NULL,\
                 memory_strength REAL NOT NULL,\
@@ -73,7 +77,7 @@ fn create_items(conn: &Connection) -> DatabaseResult<()> {
 
 fn create_schedule(conn: &Connection) -> DatabaseResult<()> {
     let sql_string = "CREATE TABLE schedule (\
-                id INTEGER PRIMARY KEY NOT NULL,\
+                id INTEGER PRIMARY KEY AUTOINCREMENT,\
                 due INTEGER NOT NULL,\
                 item_id INTEGER NOT NULL UNIQUE,\
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE\
@@ -84,11 +88,63 @@ fn create_schedule(conn: &Connection) -> DatabaseResult<()> {
 
 fn create_inbox(conn: &Connection) -> DatabaseResult<()> {
     let sql_string = "CREATE TABLE inbox (\
-                id INTEGER PRIMARY KEY NOT NULL,\
+                id INTEGER PRIMARY KEY AUTOINCREMENT,\
                 url TEXT NOT NULL\
             )";
     conn.execute(sql_string, [])?;
     Ok(())
+}
+
+/// adds a new urls to the bottom inbox table. (enqueue)
+pub fn add_urls_to_inbox(conn: &Connection, new_items: Vec<String>) -> DatabaseResult<()> {
+    let stmt = "INSERT INTO inbox (url) VALUES ?";
+    for url in new_items {
+        conn.execute(stmt, [url])?;
+    }
+    Ok(())
+}
+
+/// gets the top n items in the queue
+pub fn get_n_urls_from_inbox(n_items: usize) -> DatabaseResult<Vec<NewItem>> {
+    // SELECT (id, url) FROM inbox WHERE id in (select id FROM inbox LIMIT ?)
+    todo!()
+}
+
+// removes item from the inbox (probably to turn it into a review item)
+pub fn remove_new_item(id: u64) -> DatabaseResult<()> {
+    todo!()
+}
+
+// gets the item ids whose due date value is less than timestamp
+pub fn get_due_ids(timestamp: u64) -> DatabaseResult<Vec<ItemId>> {
+    todo!()
+}
+
+// sets the due value of the item with item_id' == item_id equal to due
+pub fn schedule_item(due: u64, item_id: ItemId) -> DatabaseResult<()> {
+    todo!()
+}
+
+// gets an item from the items table
+pub fn get_review_item(item_id: ItemId) -> DatabaseResult<()> {
+    todo!()
+}
+
+// gets several items from the items table
+pub fn get_review_items(item_ids: Vec<ItemId>) -> DatabaseResult<Vec<Item>> {
+    todo!()
+}
+
+// sets the columns of a given item row to the fields of our Item instance
+// this should be used to update an existing item row.
+pub fn update_item(item: Item) -> DatabaseResult<()> {
+    todo!()
+}
+
+// inserts a new item into the items table (when turning a new_item into an item)
+// Should return the id as provided by sqlite (we use this id when scheduling the item)
+pub fn insert_item(item: Item) -> DatabaseResult<ItemId> {
+    todo!()
 }
 
 #[cfg(test)]
@@ -129,5 +185,25 @@ mod tests {
         // since we successfully created the db the second time we can also be sure that we do infact do a SCHEMA_VERSION number of schema altering changes
 
         assert!(cleanup().is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn add_one_new_items() {
+        let (db_path, cleanup) = create_temp_dir("add_new_items");
+        let url: String = "https://open.kattis.com/problems/hello".into();
+        let urls = vec![url.clone()];
+        // this connection should be fine according to other tests
+        let conn = open_connection(&db_path).unwrap();
+        let res_add = add_urls_to_inbox(&conn, urls);
+        // could we successfully add the item?
+        assert!(res_add.is_ok());
+        // we could!
+        // now can we retrieve that same item?
+        let res_get = get_n_urls_from_inbox(1);
+        assert!(res_get.is_ok());
+        let res = res_get.unwrap();
+        assert!(res.len() == 1);
+        assert!(res[0].url == url);
     }
 }
