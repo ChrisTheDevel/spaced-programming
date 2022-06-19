@@ -97,7 +97,7 @@ fn create_inbox(conn: &Connection) -> DatabaseResult<()> {
 
 /// adds a new urls to the bottom inbox table. (enqueue)
 pub fn add_urls_to_inbox(conn: &Connection, new_items: Vec<String>) -> DatabaseResult<()> {
-    let stmt = "INSERT INTO inbox (url) VALUES ?";
+    let stmt = "INSERT INTO inbox (url) VALUES (?)";
     for url in new_items {
         conn.execute(stmt, [url])?;
     }
@@ -105,14 +105,29 @@ pub fn add_urls_to_inbox(conn: &Connection, new_items: Vec<String>) -> DatabaseR
 }
 
 /// gets the top n items in the queue
-pub fn get_n_urls_from_inbox(n_items: usize) -> DatabaseResult<Vec<NewItem>> {
-    // SELECT (id, url) FROM inbox WHERE id in (select id FROM inbox LIMIT ?)
-    todo!()
+pub fn get_n_urls_from_inbox(conn: &Connection, n_items: usize) -> DatabaseResult<Vec<NewItem>> {
+    let query = "SELECT id, url FROM inbox LIMIT ?";
+    let mut smts = conn.prepare(query)?;
+    let rows = smts.query_map([n_items], |row| {
+        Ok(NewItem {
+            id: row.get(0)?,
+            url: row.get(1)?,
+        })
+    })?;
+
+    let mut result = Vec::with_capacity(n_items);
+    for row in rows {
+        result.push(row?);
+    }
+
+    Ok(result)
 }
 
 // removes item from the inbox (probably to turn it into a review item)
-pub fn remove_new_item(id: u64) -> DatabaseResult<()> {
-    todo!()
+pub fn remove_new_item(conn: &Connection, id: u64) -> DatabaseResult<()> {
+    let stmt = "DELETE FROM inbox WHERE id=?";
+    conn.execute(stmt, [id])?;
+    Ok(())
 }
 
 // gets the item ids whose due date value is less than timestamp
@@ -189,8 +204,8 @@ mod tests {
 
     #[test]
     #[serial]
-    fn add_one_new_items() {
-        let (db_path, cleanup) = create_temp_dir("add_new_items");
+    fn add_and_get_one_new_items() {
+        let (db_path, cleanup) = create_temp_dir("add_and_get_one_new_items");
         let url: String = "https://open.kattis.com/problems/hello".into();
         let urls = vec![url.clone()];
         // this connection should be fine according to other tests
@@ -200,10 +215,77 @@ mod tests {
         assert!(res_add.is_ok());
         // we could!
         // now can we retrieve that same item?
-        let res_get = get_n_urls_from_inbox(1);
+        let res_get = get_n_urls_from_inbox(&conn, 1);
         assert!(res_get.is_ok());
         let res = res_get.unwrap();
         assert!(res.len() == 1);
         assert!(res[0].url == url);
+        assert!(cleanup().is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn add_and_get_several_new_items() {
+        let (db_path, cleanup) = create_temp_dir("add_and_get_several_new_items");
+        let urls = vec![
+            "https://open.kattis.com/problems/hello".into(),
+            "https://open.kattis.com/problems/faktor".into(),
+            "https://open.kattis.com/problems/autori".into(),
+        ];
+        // this connection should be fine according to other tests
+        let conn = open_connection(&db_path).unwrap();
+        let res_add = add_urls_to_inbox(&conn, urls.clone());
+        // could we successfully add the items?
+        assert!(res_add.is_ok());
+        // we could!
+        // now can we retrieve that same items in queue order??
+        let res_get = get_n_urls_from_inbox(&conn, urls.len());
+        assert!(res_get.is_ok());
+        let res = res_get.unwrap();
+        let res_inner_strings: Vec<String> = res.into_iter().map(|item| item.url).collect();
+        assert!(res_inner_strings.len() == urls.len());
+        assert!(urls == res_inner_strings);
+        assert!(cleanup().is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn add_several_and_remove_some_new_items() {
+        let (db_path, cleanup) = create_temp_dir("add_several_and_remove_some_new_items");
+        // add some urls
+        let urls = vec![
+            "https://open.kattis.com/problems/hello".into(),
+            "https://open.kattis.com/problems/faktor".into(),
+            "https://open.kattis.com/problems/autori".into(),
+        ];
+        let conn = open_connection(&db_path).unwrap();
+        let _res_add = add_urls_to_inbox(&conn, urls.clone()).unwrap();
+
+        // now we remove some, readd them and see that the order has been changed
+        let res_get = get_n_urls_from_inbox(&conn, urls.len()).unwrap();
+        let res_inner_strings: Vec<String> = res_get.into_iter().map(|item| item.url).collect();
+        assert!(urls == res_inner_strings);
+
+        // can we remove items?
+        assert!(remove_new_item(&conn, 1).is_ok());
+        // yes we can!
+        // can we insert them again and get the items in the expected order?
+        assert!(
+            add_urls_to_inbox(&conn, vec!["https://open.kattis.com/problems/hello".into()]).is_ok()
+        );
+        let second_res = get_n_urls_from_inbox(&conn, urls.len()).unwrap();
+        let second_inner_strings: Vec<String> =
+            second_res.into_iter().map(|item| item.url).collect();
+        let expected: Vec<String> = vec![
+            "https://open.kattis.com/problems/faktor".into(),
+            "https://open.kattis.com/problems/autori".into(),
+            "https://open.kattis.com/problems/hello".into(),
+        ];
+        assert!(second_inner_strings == expected);
+        // yes we can
+        // can we sing?
+        // ooh yeees we caaaan.
+
+        assert!(cleanup().is_ok());
     }
 }
