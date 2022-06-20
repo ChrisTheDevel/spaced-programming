@@ -4,10 +4,11 @@
 use std::path::Path;
 // external imports
 use rusqlite::{Connection, Row};
+use spaced_rs::SchedulingData;
 // internal imports
 use crate::{
     error::{DatabaseErrorSource, DatabaseResult},
-    types::{Item, ItemId, ScheduleItem, URLItem},
+    types::{Item, ItemId, URLItem},
 };
 
 const SCHEMA_VERSION: usize = 3;
@@ -50,23 +51,23 @@ pub fn init_schema(conn: &Connection) -> DatabaseResult<()> {
     // create items table (containing item specific data)
     // create schedule table (used to assign due dates and query items that are due)
     // create inbox table (used to store urls+tags for future items)
-    create_items(&conn)?;
-    create_schedule(&conn)?;
-    create_inbox(&conn)?;
+    create_items_table(&conn)?;
+    create_inbox_table(&conn)?;
     Ok(())
 }
 
-fn create_items(conn: &Connection) -> DatabaseResult<()> {
+fn create_items_table(conn: &Connection) -> DatabaseResult<()> {
     // the item table
     // the id column is an alias for the rowid
     let sql_string = "CREATE TABLE items (\
                 id INTEGER PRIMARY KEY AUTOINCREMENT,\
-                intervall INTEGER NOT NULL,\
+                interval INTEGER NOT NULL,\
                 difficulty REAL NOT NULL,\
                 memory_strength REAL NOT NULL,\
                 adjusting_factor REAL NOT NULL,\
                 times_reviewed INTEGER NOT NULL,\
                 times_recalled INTEGER NOT NULL,\
+                due INTEGER NOT NULL,\
                 url TEXT NOT NULL UNIQUE,\
                 tags TEXT NOT NULL,\
                 item_notes TEXT NOT NULL\
@@ -74,20 +75,7 @@ fn create_items(conn: &Connection) -> DatabaseResult<()> {
     conn.execute(sql_string, [])?;
     Ok(())
 }
-
-fn create_schedule(conn: &Connection) -> DatabaseResult<()> {
-    // TODO, do I need the id column?
-    let sql_string = "CREATE TABLE schedule (\
-                id INTEGER PRIMARY KEY AUTOINCREMENT,\
-                due INTEGER NOT NULL,\
-                item_id INTEGER NOT NULL UNIQUE,\
-                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE\
-            )";
-    conn.execute(sql_string, [])?;
-    Ok(())
-}
-
-fn create_inbox(conn: &Connection) -> DatabaseResult<()> {
+fn create_inbox_table(conn: &Connection) -> DatabaseResult<()> {
     let sql_string = "CREATE TABLE inbox (\
                 id INTEGER PRIMARY KEY AUTOINCREMENT,\
                 url TEXT NOT NULL\
@@ -122,7 +110,7 @@ pub fn get_n_urls_from_inbox(conn: &Connection, n_items: usize) -> DatabaseResul
     Ok(rows)
 }
 
-// removes item from the inbox (probably to turn it into a review item)
+/// removes item from the inbox (probably to turn it into a review item)
 pub fn remove_new_item(conn: &Connection, id: u64) -> DatabaseResult<()> {
     let stmt = "DELETE FROM inbox WHERE id=?";
     conn.execute(stmt, [id])?;
@@ -131,44 +119,43 @@ pub fn remove_new_item(conn: &Connection, id: u64) -> DatabaseResult<()> {
 
 // gets the item ids whose due date value is less than timestamp
 // TODO the id field in the DueItem will be redundant but we return it anyway.
-pub fn get_due_items(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<ScheduleItem>> {
-    let query = "SELECT id,due,item_id FROM schedule WHERE due <= ?";
+pub fn get_due_items(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<Item>> {
+    let query = "SELECT  id, interval, difficulty, memory_strength, adjusting_factor, times_reviewed, times_recalled, due, url, tags, item_notes FROM items WHERE due <= ?";
     let mut stmt = conn.prepare(query)?;
     let rows = stmt
         .query_map([timestamp], |row| {
-            Ok(ScheduleItem {
+            let tags_str: String = row.get(9)?;
+            // slip tags string by comma
+            let tags: Vec<String> = tags_str.split(',').map(|str| str.to_string()).collect();
+            Ok(Item {
                 id: row.get(0)?,
-                due: row.get(1)?,
-                item_id: row.get(2)?,
+                scheduling_data: SchedulingData {
+                    interval: row.get(1)?,
+                    difficulty: row.get(2)?,
+                    memory_strength: row.get(3)?,
+                    adjusting_factor: row.get(4)?,
+                    times_reviewed: row.get(5)?,
+                    times_recalled: row.get(6)?,
+                },
+                due: row.get(7)?,
+                url: row.get(8)?,
+                tags: tags,
+                item_notes: row.get(10)?,
             })
         })?
-        .into_iter()
-        .map(|row| row.expect("Could not create ScheduleItem from query"))
+        .map(|res| res.expect("could not build Item from query!"))
         .collect();
     Ok(rows)
 }
 
-// sets the due value of the item with item_id' == item_id equal to due
-pub fn schedule_item(conn: &Connection, due: u64, item_id: ItemId) -> DatabaseResult<()> {
-    let stmt_str = "INSERT OR REPLACE INTO schedule (due,item_id) VALUES (?,?)";
-    conn.execute(stmt_str, [due, item_id])?;
-    Ok(())
-}
-
-// gets an item from the items table
-pub fn get_review_item(item_id: ItemId) -> DatabaseResult<Item> {
-    todo!()
-}
-
-// gets several items from the items table
-pub fn get_review_items(item_ids: Vec<ItemId>) -> DatabaseResult<Vec<Item>> {
-    todo!()
+pub fn update_items(items: Vec<Item>) -> DatabaseResult<()> {
+    todo!();
 }
 
 // sets the columns of a given item row to the fields of our Item instance
 // this should be used to update an existing item row.
 pub fn update_item(item: Item) -> DatabaseResult<()> {
-    todo!()
+    update_items(vec![item])
 }
 
 // inserts a new item into the items table (when turning a new_item into an item)
@@ -300,37 +287,6 @@ mod tests {
         // yes we can
         // can we sing?
         // ooh yeees we caaaan.
-
-        assert!(cleanup().is_ok());
-    }
-
-    #[test]
-    #[serial]
-    fn schedule_and_get_due() {
-        // some timestamp representing now (will be unixtime later)
-        let now = 10;
-        let before1 = 5;
-        let before2 = 7;
-        let after1 = 12;
-        let after2 = 13;
-
-        let (db_path, cleanup) = create_temp_dir("add_several_and_remove_some_new_items");
-        let conn = open_connection(&db_path).unwrap();
-        // we schedule the items
-        assert!(schedule_item(&conn, before1, 1).is_ok());
-        assert!(schedule_item(&conn, before2, 2).is_ok());
-        assert!(schedule_item(&conn, after1, 3).is_ok());
-        assert!(schedule_item(&conn, after2, 4).is_ok());
-        // and then ask what items has a due date before now
-        let due_items_res = get_due_items(&conn, now);
-        assert!(due_items_res.is_ok());
-        let due_item_ids: Vec<u64> = due_items_res
-            .unwrap()
-            .into_iter()
-            .map(|item| item.item_id)
-            .collect();
-        // we expect
-        assert!(due_item_ids == vec![1, 2]);
 
         assert!(cleanup().is_ok());
     }

@@ -2,31 +2,24 @@ pub use spaced_rs::SchedulingData;
 pub type SchemaVersion = usize;
 pub type ItemId = u64;
 
-// id field omittet
+/// The review item type.
 pub struct Item {
     // the first time we insert the item into the item table we want it to provide us with a id
-    id: Option<ItemId>,
+    pub id: ItemId,
 
     // scheduling data
-    scheduling_data: SchedulingData,
+    pub scheduling_data: SchedulingData,
+    // timestamp
+    pub due: u64,
 
     // url to problem
-    url: String,
-    tags: Vec<String>,
-    item_notes: String,
-}
-
-/// Metadata struct related to the scheduling of an item.
-pub struct ScheduleItem {
-    pub id: u64,
-    // unix timestamp
-    pub due: u64,
-    // references the id of the Item
-    pub item_id: ItemId,
+    pub url: String,
+    pub tags: Vec<String>,
+    pub item_notes: String,
 }
 
 /// Struct representing problem resource that has not been made into a review item.
-/// Builds a backlog of problems that we want to review.
+/// Builds a bcklog of problems that we want to review.
 pub struct URLItem {
     pub id: u64,
     pub url: String,
