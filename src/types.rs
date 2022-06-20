@@ -16,6 +16,7 @@ pub struct Item {
     item_notes: String,
 }
 
+/// Metadata struct related to the scheduling of an item.
 pub struct ScheduleItem {
     pub id: u64,
     // unix timestamp
@@ -24,9 +25,9 @@ pub struct ScheduleItem {
     pub item_id: ItemId,
 }
 
-// new item. When representing an item that we're going to insert into inbox,
-// the id field is none (we want sqlite to give us a id)
-pub struct NewItem {
-    pub id: Option<u64>,
+/// Struct representing problem resource that has not been made into a review item.
+/// Builds a backlog of problems that we want to review.
+pub struct URLItem {
+    pub id: u64,
     pub url: String,
 }

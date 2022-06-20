@@ -7,7 +7,7 @@ use rusqlite::{Connection, Row};
 // internal imports
 use crate::{
     error::{DatabaseErrorSource, DatabaseResult},
-    types::{Item, ItemId, NewItem, ScheduleItem},
+    types::{Item, ItemId, ScheduleItem, URLItem},
 };
 
 const SCHEMA_VERSION: usize = 3;
@@ -106,12 +106,12 @@ pub fn add_urls_to_inbox(conn: &Connection, new_items: Vec<String>) -> DatabaseR
 }
 
 /// gets the top n items in the queue
-pub fn get_n_urls_from_inbox(conn: &Connection, n_items: usize) -> DatabaseResult<Vec<NewItem>> {
+pub fn get_n_urls_from_inbox(conn: &Connection, n_items: usize) -> DatabaseResult<Vec<URLItem>> {
     let query = "SELECT id, url FROM inbox LIMIT ?";
     let mut smts = conn.prepare(query)?;
     let rows = smts
         .query_map([n_items], |row| {
-            Ok(NewItem {
+            Ok(URLItem {
                 id: row.get(0)?,
                 url: row.get(1)?,
             })
@@ -130,8 +130,8 @@ pub fn remove_new_item(conn: &Connection, id: u64) -> DatabaseResult<()> {
 }
 
 // gets the item ids whose due date value is less than timestamp
-// TODO the id field in the DueItem will be redundant
-pub fn get_due_ids(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<ScheduleItem>> {
+// TODO the id field in the DueItem will be redundant but we return it anyway.
+pub fn get_due_items(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<ScheduleItem>> {
     let query = "SELECT id,due,item_id FROM schedule WHERE due <= ?";
     let mut stmt = conn.prepare(query)?;
     let rows = stmt
@@ -149,12 +149,14 @@ pub fn get_due_ids(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<Sche
 }
 
 // sets the due value of the item with item_id' == item_id equal to due
-pub fn schedule_item(due: u64, item_id: ItemId) -> DatabaseResult<()> {
-    todo!()
+pub fn schedule_item(conn: &Connection, due: u64, item_id: ItemId) -> DatabaseResult<()> {
+    let stmt_str = "INSERT OR REPLACE INTO schedule (due,item_id) VALUES (?,?)";
+    conn.execute(stmt_str, [due, item_id])?;
+    Ok(())
 }
 
 // gets an item from the items table
-pub fn get_review_item(item_id: ItemId) -> DatabaseResult<()> {
+pub fn get_review_item(item_id: ItemId) -> DatabaseResult<Item> {
     todo!()
 }
 
@@ -298,6 +300,37 @@ mod tests {
         // yes we can
         // can we sing?
         // ooh yeees we caaaan.
+
+        assert!(cleanup().is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn schedule_and_get_due() {
+        // some timestamp representing now (will be unixtime later)
+        let now = 10;
+        let before1 = 5;
+        let before2 = 7;
+        let after1 = 12;
+        let after2 = 13;
+
+        let (db_path, cleanup) = create_temp_dir("add_several_and_remove_some_new_items");
+        let conn = open_connection(&db_path).unwrap();
+        // we schedule the items
+        assert!(schedule_item(&conn, before1, 1).is_ok());
+        assert!(schedule_item(&conn, before2, 2).is_ok());
+        assert!(schedule_item(&conn, after1, 3).is_ok());
+        assert!(schedule_item(&conn, after2, 4).is_ok());
+        // and then ask what items has a due date before now
+        let due_items_res = get_due_items(&conn, now);
+        assert!(due_items_res.is_ok());
+        let due_item_ids: Vec<u64> = due_items_res
+            .unwrap()
+            .into_iter()
+            .map(|item| item.item_id)
+            .collect();
+        // we expect
+        assert!(due_item_ids == vec![1, 2]);
 
         assert!(cleanup().is_ok());
     }
