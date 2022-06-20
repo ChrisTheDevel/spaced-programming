@@ -7,7 +7,7 @@ use rusqlite::{Connection, Row};
 // internal imports
 use crate::{
     error::{DatabaseErrorSource, DatabaseResult},
-    types::{Item, ItemId, NewItem},
+    types::{Item, ItemId, NewItem, ScheduleItem},
 };
 
 const SCHEMA_VERSION: usize = 3;
@@ -76,6 +76,7 @@ fn create_items(conn: &Connection) -> DatabaseResult<()> {
 }
 
 fn create_schedule(conn: &Connection) -> DatabaseResult<()> {
+    // TODO, do I need the id column?
     let sql_string = "CREATE TABLE schedule (\
                 id INTEGER PRIMARY KEY AUTOINCREMENT,\
                 due INTEGER NOT NULL,\
@@ -108,19 +109,17 @@ pub fn add_urls_to_inbox(conn: &Connection, new_items: Vec<String>) -> DatabaseR
 pub fn get_n_urls_from_inbox(conn: &Connection, n_items: usize) -> DatabaseResult<Vec<NewItem>> {
     let query = "SELECT id, url FROM inbox LIMIT ?";
     let mut smts = conn.prepare(query)?;
-    let rows = smts.query_map([n_items], |row| {
-        Ok(NewItem {
-            id: row.get(0)?,
-            url: row.get(1)?,
-        })
-    })?;
-
-    let mut result = Vec::with_capacity(n_items);
-    for row in rows {
-        result.push(row?);
-    }
-
-    Ok(result)
+    let rows = smts
+        .query_map([n_items], |row| {
+            Ok(NewItem {
+                id: row.get(0)?,
+                url: row.get(1)?,
+            })
+        })?
+        .into_iter()
+        .map(|row| row.expect("Could not create NewItem from query!"))
+        .collect();
+    Ok(rows)
 }
 
 // removes item from the inbox (probably to turn it into a review item)
@@ -131,8 +130,22 @@ pub fn remove_new_item(conn: &Connection, id: u64) -> DatabaseResult<()> {
 }
 
 // gets the item ids whose due date value is less than timestamp
-pub fn get_due_ids(timestamp: u64) -> DatabaseResult<Vec<ItemId>> {
-    todo!()
+// TODO the id field in the DueItem will be redundant
+pub fn get_due_ids(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<ScheduleItem>> {
+    let query = "SELECT id,due,item_id FROM schedule WHERE due <= ?";
+    let mut stmt = conn.prepare(query)?;
+    let rows = stmt
+        .query_map([timestamp], |row| {
+            Ok(ScheduleItem {
+                id: row.get(0)?,
+                due: row.get(1)?,
+                item_id: row.get(2)?,
+            })
+        })?
+        .into_iter()
+        .map(|row| row.expect("Could not create ScheduleItem from query"))
+        .collect();
+    Ok(rows)
 }
 
 // sets the due value of the item with item_id' == item_id equal to due
