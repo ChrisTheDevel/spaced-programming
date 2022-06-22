@@ -54,14 +54,36 @@ fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
     let mut state = AppState::default();
     let mut should_render = true;
 
-    // welcome screen
-    let centered_greeter = Paragraph::new("Welcome to Programatica!").alignment(Alignment::Center);
-    terminal.draw(|f| f.render_widget(centered_greeter, f.size()))?;
+    let start_banner_active = true;
+    if start_banner_active {
+        // welcome screen
 
-    // wait until the user presses a button.
-    loop {
-        if let Event::Key(_key) = event::read()? {
-            break;
+        // banner with calvin S font
+        let banner_str = "╔═╗╦═╗╔═╗╔═╗╦═╗╔═╗╔╦╗╔═╗╔╦╗╦╔═╗╔═╗\n\
+                          ╠═╝╠╦╝║ ║║ ╦╠╦╝╠═╣║║║╠═╣ ║ ║║  ╠═╣\n\
+                          ╩  ╩╚═╚═╝╚═╝╩╚═╩ ╩╩ ╩╩ ╩ ╩ ╩╚═╝╩ ╩";
+        let message = "Welcome to programatica, press any button to continue";
+
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .constraints([
+                    Constraint::Percentage(40),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(40),
+                ])
+                .direction(Direction::Vertical)
+                .split(f.size());
+            let banner = Paragraph::new(banner_str).alignment(Alignment::Center);
+            let message = Paragraph::new(message).alignment(Alignment::Center);
+            f.render_widget(banner, chunks[1]);
+            f.render_widget(message, chunks[2]);
+        })?;
+
+        // wait until the user presses a button.
+        loop {
+            if let Event::Key(_key) = event::read()? {
+                break;
+            }
         }
     }
 
@@ -114,6 +136,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app_state: &AppState) {
         ]),
         Spans::from(Span::styled("Second line", Style::default().fg(Color::Red))),
     ];
+
     let main_screen = Paragraph::new(text)
         .block(Block::default().title("Paragraph").borders(Borders::ALL))
         .style(Style::default().fg(Color::White).bg(Color::Black))
