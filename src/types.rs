@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 pub use spaced_rs::SchedulingData;
 pub type SchemaVersion = usize;
 pub type ItemId = u64;
@@ -23,4 +25,8 @@ pub struct Item {
 pub struct URLItem {
     pub id: u64,
     pub url: String,
+}
+
+pub struct AppConfig {
+    pub db_path: PathBuf,
 }

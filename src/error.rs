@@ -12,12 +12,14 @@ pub type AppResult<T> = std::result::Result<T, AppError>;
 #[derive(Debug)]
 pub enum AppError {
     DatabaseError(DatabaseErrorSource),
+    TUIError(std::io::Error),
 }
 
 impl Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::DatabaseError(err) => write!(f, "DatabaseError: {err})"),
+            AppError::TUIError(err) => write!(f, "TUIError: {err})"),
         }
     }
 }
@@ -29,6 +31,12 @@ pub enum DatabaseErrorSource {
     SQLError(RusqliteError),
     InvalidSchemaError(SchemaVersion),
     DirCreationError(std::io::Error),
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::TUIError(err)
+    }
 }
 
 impl Display for DatabaseErrorSource {
