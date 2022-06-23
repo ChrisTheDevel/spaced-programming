@@ -1,8 +1,12 @@
 use std::path::PathBuf;
 
 pub use spaced_rs::SchedulingData;
+use tui::{backend::CrosstermBackend, Terminal};
+
 pub type SchemaVersion = usize;
 pub type ItemId = u64;
+
+// Item specific types
 
 /// The review item type.
 pub struct Item {
@@ -30,3 +34,9 @@ pub struct URLItem {
 pub struct AppConfig {
     pub db_path: PathBuf,
 }
+
+// Item specific type end here
+
+// typealiases for tui and crossterm specific types
+pub type Back = CrosstermBackend<std::io::Stdout>;
+pub type Term = Terminal<Back>;

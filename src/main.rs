@@ -1,13 +1,18 @@
+mod app_state;
+mod constants;
 mod database;
 mod error;
+mod screens;
 mod types;
 
+use app_state::AppState;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use error::AppResult;
+use screens::{ui, Screen};
 use std::io;
 use tui::{
     backend::CrosstermBackend,
@@ -15,11 +20,8 @@ use tui::{
     widgets::Paragraph,
     Frame, Terminal,
 };
-use types::AppConfig;
 
-const BANNER_STR: &str = "╔═╗╦═╗╔═╗╔═╗╦═╗╔═╗╔╦╗╔═╗╔╦╗╦╔═╗╔═╗\n\
-                          ╠═╝╠╦╝║ ║║ ╦╠╦╝╠═╣║║║╠═╣ ║ ║║  ╠═╣\n\
-                          ╩  ╩╚═╚═╝╚═╝╩╚═╩ ╩╩ ╩╩ ╩ ╩ ╩╚═╝╩ ╩";
+use types::{AppConfig, Term};
 
 fn main() -> AppResult<()> {
     // setup terminal
@@ -50,24 +52,12 @@ fn main() -> AppResult<()> {
     Ok(())
 }
 
-type Back = CrosstermBackend<std::io::Stdout>;
-type Term = Terminal<Back>;
-
-// the different screenstates
-#[derive(Clone)]
-enum ScreenState {
-    WelcomeScreen,
-    MainScreen,
-}
-
 // the different transitions (or lack of them) between screens
-enum Action {
-    GotoWS,
-    GotoMS,
+pub enum Action {
+    Goto(Screen),
     Quit,
     DoNothing,
     Resize,
-    IncrementCounter,
 }
 
 fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
@@ -77,9 +67,10 @@ fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
     ui(terminal, &app_state)?;
 
     loop {
+        // we only render if we have something new to show (this saves many cycles)
         if app_state.should_render {
             ui(terminal, &app_state)?;
-            app_state = AppState::should_not_render(app_state);
+            app_state = AppState::set_should_render(app_state, false);
         }
 
         let AppState { screen_state, .. } = &app_state;
@@ -87,122 +78,38 @@ fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
         use Action::*;
         // first we see what action we should take given the current state, event combo
         let action = match (&screen_state, event::read()?) {
-            (ScreenState::WelcomeScreen, Event::Key(key)) => match key.code {
+            (screens::Screen::WelcomeScreen, Event::Key(key)) => match key.code {
                 event::KeyCode::Char(char) => match char {
                     'q' => Quit,
-                    _ => GotoMS,
+                    _ => Goto(Screen::MainScreen {
+                        n_due: 5,
+                        n_new: 6,
+                        total: 11,
+                    }),
                 },
                 event::KeyCode::Esc => Quit,
                 _ => DoNothing,
             },
-            (ScreenState::MainScreen, Event::Key(key)) => match key.code {
+            (screens::Screen::MainScreen { .. }, Event::Key(key)) => match key.code {
                 event::KeyCode::Char(char) => match char {
-                    'q' => GotoWS,
+                    'q' => Goto(Screen::WelcomeScreen),
                     _ => DoNothing,
                 },
-                event::KeyCode::Esc => GotoWS,
-                event::KeyCode::Enter => IncrementCounter,
+                event::KeyCode::Esc => Goto(Screen::WelcomeScreen),
                 _ => DoNothing,
             },
-            (_, Event::Resize(_, _)) => Resize,
             (_, Event::Mouse(_)) => DoNothing,
+            (_, Event::Resize(_, _)) => Resize,
         };
 
         // the we act on that action
         app_state = match action {
-            GotoWS => AppState::goto_screen(app_state, ScreenState::WelcomeScreen),
-            GotoMS => AppState::goto_screen(app_state, ScreenState::MainScreen),
+            Goto(screen) => app_state.goto_screen(screen),
             Quit => break,
             DoNothing => app_state,
-            Resize => AppState::should_render(app_state),
-            IncrementCounter => AppState::increment_counter(app_state),
+            Resize => app_state.set_should_render(true),
         };
     }
 
     Ok(())
-}
-
-#[derive(Clone)]
-struct AppState {
-    pub screen_state: ScreenState,
-    pub counter: u32,
-    pub should_render: bool,
-}
-
-impl AppState {
-    fn should_render(mut self) -> Self {
-        self.should_render = true;
-        self
-    }
-
-    fn should_not_render(mut self) -> Self {
-        self.should_render = false;
-        self
-    }
-
-    fn goto_screen(mut self, screen: ScreenState) -> Self {
-        self.screen_state = screen;
-        self.should_render()
-    }
-
-    fn increment_counter(mut self) -> Self {
-        self.counter += 1;
-        self.should_render()
-    }
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        AppState {
-            counter: 0,
-            screen_state: ScreenState::WelcomeScreen,
-            should_render: false,
-        }
-    }
-}
-
-// statechanging functions
-
-fn ui(term: &mut Term, app_state: &AppState) -> Result<(), std::io::Error> {
-    term.draw(|f| match app_state.screen_state {
-        ScreenState::WelcomeScreen => welcome_screen(f),
-        ScreenState::MainScreen => main_screen(f, app_state),
-    })?;
-    Ok(())
-}
-
-// screens
-
-fn welcome_screen(f: &mut Frame<Back>) {
-    let message = "Welcome to programatica, press any button to continue";
-
-    let chunks = Layout::default()
-        .constraints([
-            Constraint::Percentage(40),
-            Constraint::Percentage(20),
-            Constraint::Percentage(40),
-        ])
-        .direction(Direction::Vertical)
-        .split(f.size());
-    let banner = Paragraph::new(BANNER_STR).alignment(Alignment::Center);
-    let message = Paragraph::new(message).alignment(Alignment::Center);
-    f.render_widget(banner, chunks[1]);
-    f.render_widget(message, chunks[2]);
-}
-
-fn main_screen(f: &mut Frame<Back>, app_state: &AppState) {
-    let chunks = Layout::default()
-        .constraints([
-            Constraint::Percentage(40),
-            Constraint::Percentage(20),
-            Constraint::Percentage(40),
-        ])
-        .direction(Direction::Vertical)
-        .split(f.size());
-    let counter_str = format!("Counter: {}", app_state.counter);
-    let counter = Paragraph::new(counter_str).alignment(Alignment::Center);
-    let message = "This is the main screen, press enter to increment the conter";
-    let message = Paragraph::new(message).alignment(Alignment::Center);
-    f.render_widget(message, chunks[1]);
-    f.render_widget(counter, chunks[2]);
 }
