@@ -10,14 +10,16 @@ use crossterm::{
 use error::AppResult;
 use std::io;
 use tui::{
-    backend::{Backend, CrosstermBackend},
+    backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::Paragraph,
     Frame, Terminal,
 };
 use types::AppConfig;
+
+const BANNER_STR: &str = "╔═╗╦═╗╔═╗╔═╗╦═╗╔═╗╔╦╗╔═╗╔╦╗╦╔═╗╔═╗\n\
+                          ╠═╝╠╦╝║ ║║ ╦╠╦╝╠═╣║║║╠═╣ ║ ║║  ╠═╣\n\
+                          ╩  ╩╚═╚═╝╚═╝╩╚═╩ ╩╩ ╩╩ ╩ ╩ ╩╚═╝╩ ╩";
 
 fn main() -> AppResult<()> {
     // setup terminal
@@ -48,121 +50,135 @@ fn main() -> AppResult<()> {
     Ok(())
 }
 
-type Term = Terminal<CrosstermBackend<std::io::Stdout>>;
+type Back = CrosstermBackend<std::io::Stdout>;
+type Term = Terminal<Back>;
+
+// the different screenstates
+enum ScreenState {
+    WelcomeScreen,
+    MainScreen,
+}
+
+// the different transitions (or lack of them) between screens
+enum Action {
+    GotoWS,
+    GotoMS,
+    Quit,
+    DoNothing,
+    Resize,
+    IncrementCounter,
+}
 
 fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
-    let mut state = AppState::default();
-    let mut should_render = true;
+    let mut screen_state = ScreenState::WelcomeScreen;
+    let mut should_render = false;
 
-    let start_banner_active = true;
-    if start_banner_active {
-        // welcome screen
+    let mut app_state = AppState::default();
 
-        // banner with calvin S font
-        let banner_str = "╔═╗╦═╗╔═╗╔═╗╦═╗╔═╗╔╦╗╔═╗╔╦╗╦╔═╗╔═╗\n\
-                          ╠═╝╠╦╝║ ║║ ╦╠╦╝╠═╣║║║╠═╣ ║ ║║  ╠═╣\n\
-                          ╩  ╩╚═╚═╝╚═╝╩╚═╩ ╩╩ ╩╩ ╩ ╩ ╩╚═╝╩ ╩";
-        let message = "Welcome to programatica, press any button to continue";
+    // initial rendering to screen
+    ui(terminal, &screen_state, &app_state)?;
 
-        terminal.draw(|f| {
-            let chunks = Layout::default()
-                .constraints([
-                    Constraint::Percentage(40),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(40),
-                ])
-                .direction(Direction::Vertical)
-                .split(f.size());
-            let banner = Paragraph::new(banner_str).alignment(Alignment::Center);
-            let message = Paragraph::new(message).alignment(Alignment::Center);
-            f.render_widget(banner, chunks[1]);
-            f.render_widget(message, chunks[2]);
-        })?;
-
-        // wait until the user presses a button.
-        loop {
-            if let Event::Key(_key) = event::read()? {
-                break;
-            }
-        }
-    }
-
-    terminal.draw(|f| ui(f, &state))?;
-
-    // main app loop
     loop {
-        // we only perform the heavy operation of redrawing the screen if we need to
-
-        match event::read()? {
-            Event::Key(key) => match key.code {
-                event::KeyCode::Enter => {
-                    should_render = true;
-                    let AppState { counter, .. } = &mut state;
-                    *counter += 10;
-                }
+        use Action::*;
+        // first we see what action we should take given the current state, event combo
+        let action = match (&screen_state, event::read()?) {
+            (ScreenState::WelcomeScreen, Event::Key(key)) => match key.code {
                 event::KeyCode::Char(char) => match char {
-                    'q' => break,
-                    _ => {}
+                    'q' => Quit,
+                    _ => GotoMS,
                 },
-                _ => {}
+                event::KeyCode::Esc => Quit,
+                _ => DoNothing,
             },
-            Event::Resize(_, _) => should_render = true,
-            _ => {}
+            (ScreenState::MainScreen, Event::Key(key)) => match key.code {
+                event::KeyCode::Char(char) => match char {
+                    'q' => GotoWS,
+                    _ => DoNothing,
+                },
+                event::KeyCode::Esc => GotoWS,
+                event::KeyCode::Enter => IncrementCounter,
+                _ => DoNothing,
+            },
+            (_, Event::Resize(_, _)) => Resize,
+            (_, Event::Mouse(_)) => DoNothing,
+        };
+
+        // the we act on that action
+        match action {
+            GotoWS => {
+                screen_state = ScreenState::WelcomeScreen;
+                should_render = true;
+            }
+            GotoMS => {
+                screen_state = ScreenState::MainScreen;
+                should_render = true;
+            }
+            Quit => break,
+            DoNothing => {}
+            Resize => should_render = true,
+            IncrementCounter => {
+                app_state.counter += 1;
+                should_render = true
+            }
         }
 
         if should_render {
-            terminal.draw(|f| ui(f, &state))?;
+            ui(terminal, &screen_state, &app_state)?;
             should_render = false;
         }
     }
+
     Ok(())
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, app_state: &AppState) {
-    let counter = app_state.counter;
-
-    let size = f.size();
-    // we split the screen into two chunks
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(95), Constraint::Percentage(5)])
-        .split(size);
-
-    let text = vec![
-        Spans::from(vec![
-            Span::raw(format!("Counter: {counter}")),
-            Span::styled("line", Style::default().add_modifier(Modifier::ITALIC)),
-            Span::raw("."),
-        ]),
-        Spans::from(Span::styled("Second line", Style::default().fg(Color::Red))),
-    ];
-
-    let main_screen = Paragraph::new(text)
-        .block(Block::default().title("Paragraph").borders(Borders::ALL))
-        .style(Style::default().fg(Color::White).bg(Color::Black))
-        .alignment(Alignment::Center)
-        .wrap(Wrap { trim: true });
-    f.render_widget(main_screen, chunks[0]);
-
-    let info_screen = Block::default().title("Info").borders(Borders::ALL);
-    f.render_widget(info_screen, chunks[1]);
-}
-
 struct AppState {
-    screen: ScreenState,
-    counter: u32,
-}
-
-enum ScreenState {
-    MainMenu,
-    Review,
+    pub counter: u32,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        AppState {
-            screen: ScreenState::MainMenu,
-            counter: 0,
-        }
+        AppState { counter: 0 }
     }
+}
+
+fn ui(term: &mut Term, state: &ScreenState, app_state: &AppState) -> Result<(), std::io::Error> {
+    term.draw(|f| match state {
+        ScreenState::WelcomeScreen => welcome_screen(f),
+        ScreenState::MainScreen => main_screen(f, app_state),
+    })?;
+    Ok(())
+}
+
+fn welcome_screen(f: &mut Frame<Back>) {
+    let message = "Welcome to programatica, press any button to continue";
+
+    let chunks = Layout::default()
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Percentage(20),
+            Constraint::Percentage(40),
+        ])
+        .direction(Direction::Vertical)
+        .split(f.size());
+    let banner = Paragraph::new(BANNER_STR).alignment(Alignment::Center);
+    let message = Paragraph::new(message).alignment(Alignment::Center);
+    f.render_widget(banner, chunks[1]);
+    f.render_widget(message, chunks[2]);
+}
+
+fn main_screen(f: &mut Frame<Back>, app_state: &AppState) {
+    let chunks = Layout::default()
+        .constraints([
+            Constraint::Percentage(40),
+            Constraint::Percentage(20),
+            Constraint::Percentage(40),
+        ])
+        .direction(Direction::Vertical)
+        .split(f.size());
+    let counter_str = format!("Counter: {}", app_state.counter);
+    let counter = Paragraph::new(counter_str).alignment(Alignment::Center);
+    let message = "This is the main screen, press enter to increment the conter";
+    let message = Paragraph::new(message).alignment(Alignment::Center);
+    f.render_widget(message, chunks[1]);
+    f.render_widget(counter, chunks[2]);
 }
