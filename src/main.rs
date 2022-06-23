@@ -54,6 +54,7 @@ type Back = CrosstermBackend<std::io::Stdout>;
 type Term = Terminal<Back>;
 
 // the different screenstates
+#[derive(Clone)]
 enum ScreenState {
     WelcomeScreen,
     MainScreen,
@@ -70,15 +71,19 @@ enum Action {
 }
 
 fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
-    let mut screen_state = ScreenState::WelcomeScreen;
-    let mut should_render = false;
-
     let mut app_state = AppState::default();
 
     // initial rendering to screen
-    ui(terminal, &screen_state, &app_state)?;
+    ui(terminal, &app_state)?;
 
     loop {
+        if app_state.should_render {
+            ui(terminal, &app_state)?;
+            app_state = AppState::should_not_render(app_state);
+        }
+
+        let AppState { screen_state, .. } = &app_state;
+
         use Action::*;
         // first we see what action we should take given the current state, event combo
         let action = match (&screen_state, event::read()?) {
@@ -104,50 +109,69 @@ fn run_app(terminal: &mut Term, _app_conf: AppConfig) -> AppResult<()> {
         };
 
         // the we act on that action
-        match action {
-            GotoWS => {
-                screen_state = ScreenState::WelcomeScreen;
-                should_render = true;
-            }
-            GotoMS => {
-                screen_state = ScreenState::MainScreen;
-                should_render = true;
-            }
+        app_state = match action {
+            GotoWS => AppState::goto_screen(app_state, ScreenState::WelcomeScreen),
+            GotoMS => AppState::goto_screen(app_state, ScreenState::MainScreen),
             Quit => break,
-            DoNothing => {}
-            Resize => should_render = true,
-            IncrementCounter => {
-                app_state.counter += 1;
-                should_render = true
-            }
-        }
-
-        if should_render {
-            ui(terminal, &screen_state, &app_state)?;
-            should_render = false;
-        }
+            DoNothing => app_state,
+            Resize => AppState::should_render(app_state),
+            IncrementCounter => AppState::increment_counter(app_state),
+        };
     }
 
     Ok(())
 }
 
+#[derive(Clone)]
 struct AppState {
+    pub screen_state: ScreenState,
     pub counter: u32,
+    pub should_render: bool,
+}
+
+impl AppState {
+    fn should_render(mut self) -> Self {
+        self.should_render = true;
+        self
+    }
+
+    fn should_not_render(mut self) -> Self {
+        self.should_render = false;
+        self
+    }
+
+    fn goto_screen(mut self, screen: ScreenState) -> Self {
+        self.screen_state = screen;
+        self.should_render()
+    }
+
+    fn increment_counter(mut self) -> Self {
+        self.counter += 1;
+        self.should_render()
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        AppState { counter: 0 }
+        AppState {
+            counter: 0,
+            screen_state: ScreenState::WelcomeScreen,
+            should_render: false,
+        }
     }
 }
 
-fn ui(term: &mut Term, state: &ScreenState, app_state: &AppState) -> Result<(), std::io::Error> {
-    term.draw(|f| match state {
+// statechanging functions
+
+fn ui(term: &mut Term, app_state: &AppState) -> Result<(), std::io::Error> {
+    term.draw(|f| match app_state.screen_state {
         ScreenState::WelcomeScreen => welcome_screen(f),
         ScreenState::MainScreen => main_screen(f, app_state),
     })?;
     Ok(())
 }
+
+// screens
 
 fn welcome_screen(f: &mut Frame<Back>) {
     let message = "Welcome to programatica, press any button to continue";
