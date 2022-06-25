@@ -69,8 +69,6 @@ fn create_items_table(conn: &Connection) -> DatabaseResult<()> {
                 times_recalled INTEGER NOT NULL,\
                 due INTEGER NOT NULL,\
                 url TEXT NOT NULL UNIQUE,\
-                tags TEXT NOT NULL,\
-                item_notes TEXT NOT NULL\
             )";
     conn.execute(sql_string, [])?;
     Ok(())
@@ -124,9 +122,6 @@ pub fn get_due_items(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<It
     let mut stmt = conn.prepare(query)?;
     let rows = stmt
         .query_map([timestamp], |row| {
-            let tags_str: String = row.get(9)?;
-            // slip tags string by comma
-            let tags: Vec<String> = tags_str.split(',').map(|str| str.to_string()).collect();
             Ok(Item {
                 id: row.get(0)?,
                 scheduling_data: SchedulingData {
@@ -139,8 +134,6 @@ pub fn get_due_items(conn: &Connection, timestamp: u64) -> DatabaseResult<Vec<It
                 },
                 due: row.get(7)?,
                 url: row.get(8)?,
-                tags: tags,
-                item_notes: row.get(10)?,
             })
         })?
         .map(|res| res.expect("could not build Item from query!"))

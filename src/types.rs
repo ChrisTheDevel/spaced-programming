@@ -21,8 +21,6 @@ pub struct Item {
 
     // url to problem
     pub url: String,
-    pub tags: Vec<String>,
-    pub item_notes: String,
 }
 
 /// Struct representing problem resource that has not been made into a review item.
