@@ -1,7 +1,8 @@
+use sm::sm;
 use std::path::PathBuf;
+use tui::{backend::CrosstermBackend, Terminal};
 
 pub use spaced_rs::SchedulingData;
-use tui::{backend::CrosstermBackend, Terminal};
 
 pub type SchemaVersion = usize;
 pub type ItemId = u64;
@@ -35,6 +36,13 @@ pub struct AppConfig {
     pub db_path: PathBuf,
 }
 
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            db_path: "./database/test.db".into(),
+        }
+    }
+}
 // Item specific type end here
 
 // typealiases for tui and crossterm specific types

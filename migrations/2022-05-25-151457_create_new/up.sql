@@ -1,5 +1,0 @@
--- Your SQL goes here
-CREATE TABLE inbox (
-	id INTEGER PRIMARY KEY NOT NULL,
-	url TEXT NOT NULL
-)
